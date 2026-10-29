@@ -1,5 +1,6 @@
 package com.maira.assistant
 
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 /** Routes user text: rule-based phone commands first, then the offline LLM. */
@@ -100,6 +101,15 @@ class AssistantBrain(private val app: MairaApp) {
         is Command.Call -> ActionResult(actions.call(cmd.who))
         is Command.OpenApp -> openApp(cmd.name)
         is Command.ReadScreen -> readScreen(cmd.summarize)
+        is Command.ScreenBolo -> screenBolo(cmd.on)
+        is Command.CheckUpdate -> {
+            app.appScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val found = try { Updater.checkBlocking(app, force = true) } catch (_: Exception) { false }
+                if (!found) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { app.tts.speak("मायरा का नया अपडेट अभी नहीं है। आप सबसे नए वर्शन पर हैं।") }
+            }
+            ActionResult("अपडेट देख रही हूँ…")
+        }
+        is Command.AutoSetup -> ActionResult("ऑटो सेटअप खोल रही हूँ।", deferred = { AutoSetupActivity.start(app, restart = true) })
         is Command.ReadNotifications -> {
             val (say, cap) = actions.notifications()
             if (cap != null) { lastScreen = cap; turnsSinceScreen = 0 }
@@ -113,6 +123,13 @@ class AssistantBrain(private val app: MairaApp) {
                 else -> { pendingSms = PendingSms(c, cmd.text); ActionResult("${c.name} को यह मैसेज भेजूँ: \"${cmd.text}\"? हाँ या ना बोलिए।", expectReply = true) }
             }
         }
+    }
+
+    private fun screenBolo(on: Boolean): ActionResult {
+        if (!on) { Prefs.setScreenBolo(app, false); return ActionResult("स्क्रीन बोलो मोड बंद कर दिया।") }
+        if (!actions.accessibilityOn()) return ActionResult("स्क्रीन बोलो मोड के लिए " + actions.needA11yText.removePrefix("इसके लिए "))
+        Prefs.setScreenBolo(app, true)
+        return ActionResult("स्क्रीन बोलो मोड चालू। अब जो भी ऐप या स्क्रीन खुलेगी, मैं उसका नाम और ऊपर लिखी बातें बोलूँगी। बैंक, UPI और पासवर्ड वाली स्क्रीन नहीं पढ़ूँगी। बंद करने के लिए बोलिए: स्क्रीन बोलो मोड बंद करो।")
     }
 
     private fun openApp(name: String): ActionResult = when (val r = actions.findApp(name)) {

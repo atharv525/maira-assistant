@@ -21,16 +21,21 @@ class MairaApp : Application() {
         nm.createNotificationChannel(
             NotificationChannel(CH_WAKE, "Hey Maira (सुन रही है)", NotificationManager.IMPORTANCE_LOW)
         )
+        nm.createNotificationChannel(
+            NotificationChannel(CH_UPDATE, "मायरा अपडेट", NotificationManager.IMPORTANCE_HIGH)
+        )
         ModelManager.autoDetect(this)
         tts = TtsManager(this)
         llm = LlmEngine(this)
         brain = AssistantBrain(this)
+        try { Watchdog.schedule(this) } catch (_: Exception) {}
     }
 
     companion object {
         lateinit var instance: MairaApp
             private set
         const val CH_WAKE = "maira_wake"
+        const val CH_UPDATE = "maira_update"
     }
 }
 
@@ -46,4 +51,27 @@ object Prefs {
         p(ctx).edit().putLong("dl_id", id).putString("dl_file", file).apply()
     fun setupShown(ctx: Context) = p(ctx).getBoolean("setup_shown", false)
     fun setSetupShown(ctx: Context) = p(ctx).edit().putBoolean("setup_shown", true).apply()
+
+    // ---- v1.2 automation
+    fun autoSetupDone(ctx: Context) = p(ctx).getBoolean("auto_setup_done", false)
+    fun setAutoSetupDone(ctx: Context) = p(ctx).edit().putBoolean("auto_setup_done", true).apply()
+    fun flag(ctx: Context, k: String) = p(ctx).getBoolean("f_$k", false)
+    fun setFlag(ctx: Context, k: String, v: Boolean = true) = p(ctx).edit().putBoolean("f_$k", v).apply()
+    fun long(ctx: Context, k: String, def: Long = 0L) = p(ctx).getLong("l_$k", def)
+    fun setLong(ctx: Context, k: String, v: Long) = p(ctx).edit().putLong("l_$k", v).apply()
+    fun int(ctx: Context, k: String, def: Int = 0) = p(ctx).getInt("i_$k", def)
+    fun setInt(ctx: Context, k: String, v: Int) = p(ctx).edit().putInt("i_$k", v).apply()
+    /** 0 = not asked, 1 = mobile data allowed for the model download, 2 = Wi-Fi only */
+    fun meteredChoice(ctx: Context) = int(ctx, "metered")
+    fun setMeteredChoice(ctx: Context, v: Int) = setInt(ctx, "metered", v)
+    fun screenBolo(ctx: Context) = flag(ctx, "screen_bolo")
+    fun setScreenBolo(ctx: Context, v: Boolean) = setFlag(ctx, "screen_bolo", v)
+    fun updateArmed(ctx: Context) = long(ctx, "update_armed") > System.currentTimeMillis()
+    fun armUpdate(ctx: Context, ms: Long) = setLong(ctx, "update_armed", System.currentTimeMillis() + ms)
+    fun permArmed(ctx: Context) = long(ctx, "perm_armed") > System.currentTimeMillis()
+    fun armPerms(ctx: Context, ms: Long) = setLong(ctx, "perm_armed", System.currentTimeMillis() + ms)
+    /** Setup step the accessibility guide is talking about, while Auto Setup has sent the user to a settings screen. */
+    fun guideStep(ctx: Context): String? = if (long(ctx, "guide_until") > System.currentTimeMillis()) p(ctx).getString("guide_step", null) else null
+    fun setGuideStep(ctx: Context, step: String?, ms: Long = 4 * 60_000L) =
+        p(ctx).edit().putString("guide_step", step).putLong("l_guide_until", if (step == null) 0L else System.currentTimeMillis() + ms).apply()
 }

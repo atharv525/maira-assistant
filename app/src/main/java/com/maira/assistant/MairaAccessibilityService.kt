@@ -13,12 +13,27 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.app.Notification
 import android.graphics.Rect
+import android.os.Handler
+import android.os.Looper
 
 class MairaAccessibilityService : AccessibilityService() {
 
-    override fun onServiceConnected() { super.onServiceConnected(); instance = this }
+    private val h = Handler(Looper.getMainLooper())
+
+    override fun onServiceConnected() {
+        super.onServiceConnected(); instance = this
+        // Bound by the system at boot: a good moment to bring "Hey Maira" back (best effort on Android 14+).
+        h.postDelayed({ try { Watchdog.ensureWake(this) } catch (_: Exception) {} }, 3000)
+        // If Auto Setup sent the user here to turn this on, go straight back to the wizard.
+        if (Prefs.guideStep(this) == "a11y" || Prefs.guideStep(this) == "restricted") {
+            Prefs.setGuideStep(this, null)
+            h.postDelayed({ AutoSetupActivity.bringToFront(this) }, 700)
+        }
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.eventType != AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) return
+        if (event == null) return
+        if (event.eventType != AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) { onWindowEvent(event); return }
         try {
             val pkg = event.packageName?.toString() ?: return
             if (pkg == packageName) return
@@ -34,6 +49,111 @@ class MairaAccessibilityService : AccessibilityService() {
                 while (notifCache.size > 15) notifCache.removeLast()
             }
         } catch (_: Exception) {}
+    }
+
+    // ------------------------------------------------------------------ v1.2: auto-click, setup guide, screen bolo
+    private var lastClickAt = 0L
+    private var clicksLeft = 12
+    private var lastHint: String? = null
+    private var lastHintAt = 0L
+    private var boloPkg = ""
+    private var lastBoloKey = ""
+
+    private fun onWindowEvent(e: AccessibilityEvent) {
+        val type = e.eventType
+        if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
+        val pkg = e.packageName?.toString() ?: return
+        if (pkg == packageName) return
+        try {
+            if (AutoClick.isInstallerPkg(pkg) && Prefs.updateArmed(this)) autoClick(pkg, installer = true)
+            else if (AutoClick.isPermissionPkg(pkg) && Prefs.permArmed(this)) autoClick(pkg, installer = false)
+        } catch (_: Exception) {}
+        if (Prefs.guideStep(this) != null) { h.removeCallbacks(guideRun); h.postDelayed(guideRun, 1200) }
+        if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && Prefs.screenBolo(this)) {
+            boloPkg = pkg; h.removeCallbacks(boloRun); h.postDelayed(boloRun, 2000)
+        }
+    }
+
+    /** Flattens visible nodes of the top-most non-Maira windows (optionally only [pkg]). */
+    private fun snapshot(pkg: String?, maxNodes: Int = 600): List<Pair<UiNode, AccessibilityNodeInfo>> {
+        val roots = ArrayList<AccessibilityNodeInfo>()
+        try {
+            for (w in windows.orEmpty().sortedByDescending { it.layer }) {
+                if (w.type != AccessibilityWindowInfo.TYPE_APPLICATION && w.type != AccessibilityWindowInfo.TYPE_SYSTEM) continue
+                val r = w.root ?: continue
+                val rp = r.packageName?.toString() ?: continue
+                if (rp == packageName || rp == "com.android.systemui") continue
+                if (pkg != null && rp != pkg) continue
+                roots.add(r)
+                if (roots.size >= 2) break
+            }
+        } catch (_: Exception) {}
+        if (roots.isEmpty()) rootInActiveWindow?.takeIf { val rp = it.packageName?.toString(); rp != packageName && (pkg == null || rp == pkg) }?.let { roots.add(it) }
+        val out = ArrayList<Pair<UiNode, AccessibilityNodeInfo>>()
+        for (root in roots) {
+            val stack = ArrayDeque<AccessibilityNodeInfo>(); stack.addLast(root)
+            while (stack.isNotEmpty() && out.size < maxNodes) {
+                val n = stack.removeFirst()
+                if (!n.isVisibleToUser) continue
+                if (!n.isPassword) out.add(UiNode(n.text?.toString().orEmpty(), n.contentDescription?.toString().orEmpty(), n.viewIdResourceName.orEmpty(),
+                    n.isClickable, n.isCheckable, n.isChecked, n.isEnabled, n.className?.toString().orEmpty()) to n)
+                for (i in 0 until n.childCount) n.getChild(i)?.let { stack.addLast(it) }
+            }
+        }
+        return out
+    }
+
+    private fun clickNode(n: AccessibilityNodeInfo): Boolean {
+        var cur: AccessibilityNodeInfo? = n
+        while (cur != null) {
+            if (cur.isClickable && cur.isEnabled) return cur.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            cur = cur.parent
+        }
+        return false
+    }
+
+    /** Scoped auto-tap: only Maira's own update in the package installer, or Maira's own permission dialog during setup. */
+    private fun autoClick(pkg: String, installer: Boolean) {
+        val now = System.currentTimeMillis()
+        if (now - lastClickAt < 700) return
+        if (clicksLeft <= 0) { if (now - lastClickAt > 10 * 60_000L) clicksLeft = 12 else return }
+        val snap = snapshot(pkg)
+        val nodes = snap.map { it.first }
+        val idx = if (installer) AutoClick.installerTarget(pkg, nodes) else AutoClick.permissionTarget(pkg, nodes)
+        if (idx != null && clickNode(snap[idx].second)) { lastClickAt = now; clicksLeft-- }
+    }
+
+    private val guideRun = Runnable {
+        val step = Prefs.guideStep(this) ?: return@Runnable
+        if (WakeWordService.uiActive && rootInActiveWindow?.packageName?.toString() == packageName) return@Runnable
+        val hint = try { SetupGuide.hint(step, snapshot(null).map { it.first }) } catch (_: Exception) { null } ?: return@Runnable
+        val now = System.currentTimeMillis()
+        if (hint == lastHint && now - lastHintAt < 25_000) return@Runnable
+        lastHint = hint; lastHintAt = now
+        try { MairaApp.instance.tts.speak(hint) } catch (_: Exception) {}
+    }
+
+    private fun keyboardPkg(): String = try {
+        Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)?.substringBefore('/') ?: ""
+    } catch (_: Exception) { "" }
+
+    private var boloRetry = 0
+    private val boloRun = object : Runnable {
+        override fun run() {
+            if (!Prefs.screenBolo(this@MairaAccessibilityService)) return
+            if (WakeWordService.uiActive) return
+            val app = MairaApp.instance
+            if (app.tts.isSpeaking()) { if (boloRetry++ < 3) h.postDelayed(this, 2000); return }
+            boloRetry = 0
+            val pkg = boloPkg
+            if (ScreenBolo.shouldSkip(pkg, packageName, appLabel(pkg), pkg == keyboardPkg())) return
+            val cap = try { readScreen() } catch (_: Exception) { null } ?: return
+            if (ScreenBolo.shouldSkip(cap.pkg, packageName, cap.appName, cap.pkg == keyboardPkg())) return
+            val key = cap.pkg + "|" + cap.text.take(120)
+            if (key == lastBoloKey) return
+            lastBoloKey = key
+            app.tts.speak(ScreenBolo.brief(cap.appName, cap.text))
+        }
     }
 
     fun appLabel(pkg: String): String = try {

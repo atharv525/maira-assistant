@@ -219,6 +219,26 @@ class SetupActivity : AppCompatActivity() {
             safeStart(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
         })
 
+        val auto = Button(this).apply { text = "🪄 ऑटो सेटअप (मायरा खुद बताएगी)" }
+        auto.setOnClickListener { AutoSetupActivity.start(this, restart = true) }
+        permList.addView(auto)
+        val upd = Button(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply { text = "⬆️ अपडेट चेक करें (अभी: v${BuildConfig.VERSION_NAME}, ${BuildConfig.VERSION_CODE})"; isAllCaps = false }
+        upd.setOnClickListener {
+            toast("अपडेट देख रही हूँ…")
+            app.appScope.launch(Dispatchers.IO) {
+                val found = try { Updater.checkBlocking(applicationContext, force = true) } catch (_: Exception) { false }
+                withContext(Dispatchers.Main) { toast(if (found) "नया अपडेट मिला — डाउनलोड हो रहा है" else "आप सबसे नए वर्शन पर हैं") }
+            }
+        }
+        permList.addView(upd)
+        val bolo = Button(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply { isAllCaps = false }
+        fun boloText() { bolo.text = (if (Prefs.screenBolo(this)) "✅ " else "⬜ ") + "स्क्रीन बोलो मोड (हर नई स्क्रीन अपने आप बोले)" }
+        boloText()
+        bolo.setOnClickListener {
+            if (!Prefs.screenBolo(this) && !MairaAccessibilityService.isEnabled(this)) { toast("पहले फ़ोन कंट्रोल (Accessibility) चालू कीजिए"); return@setOnClickListener }
+            Prefs.setScreenBolo(this, !Prefs.screenBolo(this)); boloText()
+        }
+        permList.addView(bolo)
         val all = Button(this).apply { text = "सारी ज़रूरी अनुमतियाँ एक साथ दें" }
         all.setOnClickListener {
             val p = mutableListOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_CONTACTS, Manifest.permission.CALL_PHONE, Manifest.permission.SEND_SMS)

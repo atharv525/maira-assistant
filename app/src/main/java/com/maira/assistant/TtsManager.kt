@@ -18,11 +18,18 @@ class TtsManager(ctx: Context) : TextToSpeech.OnInitListener {
     private val pending = mutableListOf<Pair<String, (() -> Unit)?>>()
     private val callbacks = ConcurrentHashMap<String, () -> Unit>()
 
-    override fun onInit(status: Int) {
-        if (status != TextToSpeech.SUCCESS) return
+    @Volatile var initFailed = false; private set
+    /** A Hindi voice that works without internet is installed. */
+    @Volatile var hindiOffline = false; private set
+
+    /** Re-checks the Hindi voice (e.g. after the user installed voice data). */
+    fun recheck() { if (ready) try { applyHindi() } catch (_: Exception) {} }
+
+    private fun applyHindi() {
         val hi = Locale("hi", "IN")
         val r = tts.setLanguage(hi)
         hindiAvailable = r != TextToSpeech.LANG_MISSING_DATA && r != TextToSpeech.LANG_NOT_SUPPORTED
+        hindiOffline = try { tts.voices?.any { it.locale.language == "hi" && !it.isNetworkConnectionRequired && !it.features.contains("notInstalled") } == true } catch (_: Exception) { hindiAvailable }
         try {
             // Prefer an offline (local) Hindi voice
             val voices = tts.voices?.filter { it.locale.language == "hi" && !it.isNetworkConnectionRequired }
@@ -31,6 +38,11 @@ class TtsManager(ctx: Context) : TextToSpeech.OnInitListener {
                 tts.voice = voices.firstOrNull { it.name.contains("female", true) } ?: voices.first()
             }
         } catch (_: Exception) { }
+    }
+
+    override fun onInit(status: Int) {
+        if (status != TextToSpeech.SUCCESS) { initFailed = true; return }
+        applyHindi()
         tts.setSpeechRate(1.0f)
         tts.setPitch(1.08f)
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {

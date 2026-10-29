@@ -76,10 +76,14 @@ class MainActivity : AppCompatActivity() {
 
         addBot("नमस्ते! मैं मायरा हूँ। माइक दबाकर बोलिए — जैसे \"YouTube खोलो\", \"मम्मी को कॉल करो\", \"टॉर्च जलाओ\" या कोई भी सवाल पूछिए।")
 
-        if (!Prefs.setupShown(this)) {
-            Prefs.setSetupShown(this)
-            startActivity(Intent(this, SetupActivity::class.java))
+        if (!Prefs.autoSetupDone(this)) {
+            AutoSetupActivity.start(this)
+        } else {
+            Prefs.setFlag(this, "auto_model")
+            ModelManager.ensureAuto(this)
         }
+        // auto-update: check on every launch (and daily from the watchdog)
+        app.appScope.launch(kotlinx.coroutines.Dispatchers.IO) { try { Updater.checkBlocking(applicationContext, force = true) } catch (_: Exception) {} }
         if (Prefs.wakeEnabled(this) && !WakeWordService.running &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             try { WakeWordService.start(this) } catch (_: Exception) {}
@@ -99,6 +103,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (Prefs.autoSetupDone(this)) ModelManager.ensureAuto(this)
         WakeWordService.uiActive = true
         WakeWordService.send(this, WakeWordService.ACTION_PAUSE)
         refreshStatus()

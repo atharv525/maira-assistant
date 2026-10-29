@@ -16,6 +16,15 @@ jobs:
           java-version: '17'
       - name: Android SDK (preinstalled on runner)
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+      - name: Version
+        id: ver
+        run: |
+          CODE=$((100 + GITHUB_RUN_NUMBER))
+          NAME=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          printf 'versionCode=%s\nversionName=%s\ncommit=%s\n' "$CODE" "$NAME" "$GITHUB_SHA" > version.txt
+          cat version.txt
       - name: Build
         run: |
           chmod +x gradlew
@@ -24,11 +33,20 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Maira-apk
-          path: Maira.apk
+          path: |
+            Maira.apk
+            version.txt
       - name: Publish latest release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: Maira (latest build)
+          name: Maira v${{ steps.ver.outputs.name }} (build ${{ steps.ver.outputs.code }})
+          body: |
+            Automatic build from ${{ github.sha }}.
+            versionCode=${{ steps.ver.outputs.code }}
+            versionName=${{ steps.ver.outputs.name }}
           prerelease: false
-          files: Maira.apk
+          make_latest: true
+          files: |
+            Maira.apk
+            version.txt

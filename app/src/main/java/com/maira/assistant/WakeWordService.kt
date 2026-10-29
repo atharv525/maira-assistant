@@ -34,7 +34,7 @@ class WakeWordService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_STOP -> { stopSelf(); return START_NOT_STICKY }
+            ACTION_STOP -> { userStopped = true; Prefs.setFlag(this, "wake_user_stopped", true); stopSelf(); return START_NOT_STICKY }
             ACTION_PAUSE -> { state = State.PAUSED; speech.cancel(); h.removeCallbacksAndMessages(null); updateNotif("रुकी हुई (ऐप खुला है)"); return START_STICKY }
             ACTION_RESUME -> { if (state != State.BUSY) { state = State.WAKE; updateNotif(null); listenSoon(600) }; return START_STICKY }
         }
@@ -134,8 +134,16 @@ class WakeWordService : Service() {
         }
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        if (!userStopped && Watchdog.wakeWanted(this)) try { Watchdog.kickSoon(this, 1) } catch (_: Exception) {}
+    }
+
+    private var userStopped = false
+
     override fun onDestroy() {
         running = false
+        if (!userStopped && Watchdog.wakeWanted(this)) try { Watchdog.kickSoon(this, 1) } catch (_: Exception) {}
         h.removeCallbacksAndMessages(null)
         speech.destroy()
         super.onDestroy()
@@ -162,6 +170,7 @@ class WakeWordService : Service() {
         }
 
         fun start(ctx: Context) {
+            Prefs.setFlag(ctx, "wake_user_stopped", false)
             ContextCompat.startForegroundService(ctx, Intent(ctx, WakeWordService::class.java))
         }
         fun stop(ctx: Context) { ctx.stopService(Intent(ctx, WakeWordService::class.java)) }

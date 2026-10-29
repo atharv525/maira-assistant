@@ -26,6 +26,9 @@ sealed class Command {
     object Help : Command()
     data class ReadScreen(val summarize: Boolean) : Command()
     object ReadNotifications : Command()
+    data class ScreenBolo(val on: Boolean) : Command()
+    object CheckUpdate : Command()
+    object AutoSetup : Command()
 }
 
 /** Rule based Hinglish + Hindi command parser. Runs before the LLM. */
@@ -106,6 +109,14 @@ object CommandParser {
         if (t.hasAny("notification", "notifications", "notifiction", "नोटिफिकेशन", "नोटिफिकेशंस", "नोटिफिकेशन्स", "सूचना", "सूचनाएं", "सूचनाएँ") &&
             t.hasAny("padho", "padh", "parho", "sunao", "suna", "batao", "bata", "read", "kya aaya", "kya aya", "kiska", "किसका",
                 "पढो", "पढ", "सुनाओ", "सुना", "बताओ", "बता", "क्या आया", "क्या आए", "रीड")) return Command.ReadNotifications
+
+        // --- "screen bolo mode chalu karo / band karo"
+        parseScreenBolo(t)?.let { return it }
+
+        // --- update / setup
+        if (t.hasAny("update", "अपडेट", "apdet") && t.hasAny("check", "चेक", "hai kya", "है क्या", "aaya", "आया", "naya", "नया", "dekho", "देखो"))
+            return Command.CheckUpdate
+        if (t.hasAny("auto setup", "ऑटो सेटअप", "setup karo", "setup kar do", "सेटअप करो", "सेटअप कर दो", "setup shuru", "सेटअप शुरू")) return Command.AutoSetup
 
         // --- screen reading
         parseScreen(t)?.let { return it }
@@ -252,6 +263,21 @@ object CommandParser {
                 break
             }
         }
+        return null
+    }
+
+    private val BOLO_WORDS = arrayOf("bolo", "bolna", "bolte", "bol", "बोलो", "बोलना", "बोलते", "बोल", "mode", "मोड", "reader", "रीडर", "auto read", "ऑटो रीड")
+
+    /** "screen bolo mode chalu karo", "स्क्रीन बोलो मोड बंद करो", "screen reader mode on". */
+    private fun parseScreenBolo(t: String): Command? {
+        if (!t.hasAny("screen", "scren", "skrin", "स्क्रीन", "स्क्रिन")) return null
+        if (!t.hasAny(*BOLO_WORDS)) return null
+        if (t.hasAny("screenshot", "स्क्रीनशॉट", "lock", "लॉक", "brightness", "ब्राइटनेस", "record", "रिकॉर्ड", "home screen", "होम स्क्रीन")) return null
+        val mode = t.hasAny("mode", "मोड", "reader", "रीडर", "auto read", "ऑटो रीड")
+        val off = t.hasAny(*OFF) || t.hasAny("mat bolo", "मत बोलो", "बंद", "hatao", "हटाओ")
+        val on = t.hasAny(*ON) || t.hasAny("laga do", "lagao", "लगाओ", "लगा दो", "kar do", "कर दो", "karo", "करो")
+        if (off) return Command.ScreenBolo(false)
+        if (on || mode) return Command.ScreenBolo(true)
         return null
     }
 

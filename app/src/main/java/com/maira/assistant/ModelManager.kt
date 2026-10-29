@@ -1,6 +1,9 @@
 package com.maira.assistant
 
+import android.app.ActivityManager
 import android.app.DownloadManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -36,7 +39,45 @@ object ModelManager {
         Prefs.setModelPath(ctx, f?.absolutePath)
     }
 
-    fun startDownload(ctx: Context, info: ModelInfo): Long {
+    /** 0.5B if the phone has less than 5 GB RAM, else 1.5B. */
+    fun pickDefault(totalRamBytes: Long): ModelInfo = if (totalRamBytes in 1 until 5_000_000_000L) SMALL else BIG
+
+    fun totalRam(ctx: Context): Long = try {
+        val mi = ActivityManager.MemoryInfo(); ctx.getSystemService(ActivityManager::class.java).getMemoryInfo(mi); mi.totalMem
+    } catch (_: Exception) { 0L }
+
+    fun defaultFor(ctx: Context) = pickDefault(totalRam(ctx))
+
+    fun hasModel(ctx: Context): Boolean { val p = Prefs.modelPath(ctx); return p != null && File(p).exists() }
+
+    /** true = Wi-Fi/unmetered, false = mobile data, null = offline */
+    fun unmetered(ctx: Context): Boolean? = try {
+        val cm = ctx.getSystemService(ConnectivityManager::class.java)
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+        if (caps == null || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) null
+        else caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+    } catch (_: Exception) { null }
+
+    /** Retry backoff after failures: 1, 2, 4 … 60 minutes. */
+    fun retryDelayMs(failures: Int): Long = (60_000L shl failures.coerceIn(0, 6)).coerceAtMost(60 * 60_000L)
+
+    /**
+     * Zero-touch model download: starts the default model if there is none and nothing is downloading.
+     * Uses mobile data only if the user said yes once (Prefs.meteredChoice == 1); otherwise DownloadManager waits for Wi-Fi.
+     * Returns true if a download was (re)started.
+     */
+    fun ensureAuto(ctx: Context): Boolean {
+        if (!Prefs.flag(ctx, "auto_model")) return false
+        poll(ctx)
+        if (hasModel(ctx) || Prefs.downloadId(ctx) >= 0) return false
+        val fails = Prefs.int(ctx, "dl_fails")
+        if (fails > 0 && System.currentTimeMillis() - Prefs.long(ctx, "dl_fail_at") < retryDelayMs(fails - 1)) return false
+        return try {
+            startDownload(ctx, defaultFor(ctx), Prefs.meteredChoice(ctx) == 1); true
+        } catch (_: Exception) { false }
+    }
+
+    fun startDownload(ctx: Context, info: ModelInfo, allowMetered: Boolean = true): Long {
         val dm = ctx.getSystemService(DownloadManager::class.java)
         val old = Prefs.downloadId(ctx)
         if (old >= 0) try { dm.remove(old) } catch (_: Exception) {}
@@ -46,7 +87,7 @@ object ModelManager {
             .setDescription(info.name)
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setDestinationInExternalFilesDir(ctx, "models", info.file + ".part")
-            .setAllowedOverMetered(true)
+            .setAllowedOverMetered(allowMetered)
             .setAllowedOverRoaming(true)
         val id = dm.enqueue(req)
         Prefs.setDownload(ctx, id, info.file)
@@ -79,8 +120,12 @@ object ModelManager {
                 if (part.exists()) { fin.delete(); part.renameTo(fin) }
                 if (fin.exists()) Prefs.setModelPath(ctx, fin.absolutePath)
                 Prefs.setDownload(ctx, -1, null)
+                Prefs.setInt(ctx, "dl_fails", 0)
             } else if (status == DownloadManager.STATUS_FAILED) {
                 Prefs.setDownload(ctx, -1, null)
+                try { dm.remove(id) } catch (_: Exception) {}
+                Prefs.setInt(ctx, "dl_fails", Prefs.int(ctx, "dl_fails") + 1)
+                Prefs.setLong(ctx, "dl_fail_at", System.currentTimeMillis())
             }
             return DlState(status, done, total, reason)
         }

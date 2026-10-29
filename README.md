@@ -1,6 +1,6 @@
 # Maira — offline Hindi voice assistant (Android)
 
-Kotlin, single module, minSdk 26 / targetSdk 34, arm64-v8a. Debug-signed APK: `Maira.apk`.
+Kotlin, single module, minSdk 26 / targetSdk 34, arm64-v8a. APK: `Maira.apk`, signed with the committed key `signing/maira.jks` (same key locally and in CI, so builds update each other in place).
 
 * Brain: MediaPipe LLM Inference `com.google.mediapipe:tasks-genai:0.10.24` + Qwen2.5 `.task` model (downloaded in-app via DownloadManager, or picked from storage). Prompt uses ChatML; session prompt templates are set to empty so the prompt is passed verbatim.
 * Voice: Android `SpeechRecognizer` (hi-IN, `EXTRA_PREFER_OFFLINE`), `TextToSpeech` Locale("hi","IN").
@@ -9,6 +9,15 @@ Kotlin, single module, minSdk 26 / targetSdk 34, arm64-v8a. Debug-signed APK: `M
 * Notifications: `MairaNotificationListener` (optional special access, Setup button) for current notifications; fallback = accessibility `typeNotificationStateChanged` cache.
 * App opening: `AppMatcher` (alias map + Translit fuzzy match, ambiguity → "कौन सा खोलूँ?"). Activities are started via the accessibility-service context so launches from `WakeWordService` are not blocked by background-activity-start limits.
 * "Hey Maira": `WakeWordService` (foreground, microphone type) loops the recognizer.
+
+**v1.2 automation**
+* `AutoSetupActivity` (first launch, also "सेटअप करो"): one big button per step, spoken in Hindi, auto-advances on `onResume`, skips done steps, auto-opens each settings screen once. Order: Hindi TTS → (Android 13+ "Allow restricted settings" guide when needed) → Accessibility → runtime perms → notification access → battery opt-out → install-unknown-apps → Vivo autostart → DND → offline Hindi speech pack. Ends by enabling the wake service.
+* `SetupGuide` (pure, tested): while Auto Setup has sent the user into Settings, the accessibility service reads that screen and speaks what to tap next.
+* `AutoClick` (pure, tested): accessibility auto-taps ONLY (a) Install/Update in the package installer while Maira's own update is armed and the dialog names Maira, (b) Allow on runtime-permission dialogs that name Maira while Auto Setup armed them (90 s).
+* `ScreenBolo`: "screen bolo mode chalu/band karo" — speaks app name + first lines on each window change (2 s debounce; skips Maira, keyboard, password fields, banking/UPI apps).
+* Model: `ModelManager.ensureAuto` picks 0.5B if RAM < 5 GB else 1.5B, Wi-Fi only unless the user said yes to mobile data once, retries with backoff.
+* `Watchdog` (WorkManager, 15 min) + `BootReceiver` (BOOT_COMPLETED / MY_PACKAGE_REPLACED) + accessibility `onServiceConnected`: restart wake service, retry model, daily update check. Android 14+ may refuse to start a microphone FGS from the background; then it starts on next app open.
+* `Updater`: GitHub `releases/tags/latest`; CI sets versionCode = 100 + GITHUB_RUN_NUMBER and writes `versionCode=` into the release body + `version.txt` asset. Downloads via DownloadManager, verifies package + signature, installs with a PackageInstaller session (USER_ACTION_NOT_REQUIRED on Android 12+ once Maira is installer of record), FileProvider ACTION_VIEW fallback.
 
 Build (normal PC with Android SDK): `./gradlew assembleDebug` → `app/build/outputs/apk/debug/app-debug.apk`. Unit tests: `./gradlew testDebugUnitTest`.
 
