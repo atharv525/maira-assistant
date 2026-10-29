@@ -1,0 +1,10 @@
+<resources>
+    <color name="maira_primary">#7B3FE4</color>
+    <color name="maira_primary_dark">#5B21B6</color>
+    <color name="maira_accent">#FF5C8A</color>
+    <color name="maira_bg">#F6F2FF</color>
+    <color name="bubble_user">#7B3FE4</color>
+    <color name="bubble_bot">#FFFFFF</color>
+    <color name="text_dark">#1F1535</color>
+    <color name="text_muted">#6B6385</color>
+</resources>

@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/maira_bg">
+
+    <LinearLayout
+        android:id="@+id/setupRoot"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="18dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="मायरा सेटअप"
+            android:textColor="@color/maira_primary_dark"
+            android:textSize="26sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="1. दिमाग (AI मॉडल) — सिर्फ़ एक बार डाउनलोड"
+            android:textColor="@color/text_dark"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvModelStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textColor="@color/text_muted"
+            android:textSize="15sp" />
+
+        <ProgressBar
+            android:id="@+id/pbModel"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:max="1000"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btnDownloadBig"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Qwen2.5 1.5B डाउनलोड करें (1.6 GB, बेहतर हिंदी)" />
+
+        <Button
+            android:id="@+id/btnDownloadSmall"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Qwen2.5 0.5B डाउनलोड करें (550 MB, तेज़)" />
+
+        <Button
+            android:id="@+id/btnPickModel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="फ़ोन से .task फ़ाइल चुनें" />
+
+        <Button
+            android:id="@+id/btnCancelDownload"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="डाउनलोड रोकें"
+            android:visibility="gone" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="2. अनुमतियाँ (Permissions)"
+            android:textColor="@color/text_dark"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:id="@+id/permList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="3. आवाज़"
+            android:textColor="@color/text_dark"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnOfflineSpeech"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ऑफ़लाइन हिंदी पहचान (Speech) डाउनलोड करें" />
+
+        <Button
+            android:id="@+id/btnTtsData"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="हिंदी आवाज़ (TTS) इंस्टॉल / जाँचें" />
+
+        <Button
+            android:id="@+id/btnTestVoice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="मायरा की आवाज़ सुनें" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="4. &quot;Hey Maira&quot; (हमेशा सुनना)"
+            android:textColor="@color/text_dark"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/swWake"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="&quot;मायरा&quot; बोलते ही जागे (बैटरी ज़्यादा लगेगी)"
+            android:textSize="16sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="सब कुछ फ़ोन पर ही चलता है। मॉडल डाउनलोड के बाद इंटरनेट की ज़रूरत नहीं।"
+            android:textColor="@color/text_muted"
+            android:textSize="14sp" />
+    </LinearLayout>
+</ScrollView>

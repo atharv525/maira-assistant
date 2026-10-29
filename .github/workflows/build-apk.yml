@@ -1,0 +1,33 @@
+name: Build Maira APK
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Build
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/*.apk Maira.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Maira-apk
+          path: Maira.apk
+      - name: Publish latest release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Maira (latest build)
+          prerelease: false
+          files: Maira.apk

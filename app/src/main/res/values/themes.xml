@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.Maira" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/maira_primary</item>
+        <item name="colorPrimaryVariant">@color/maira_primary_dark</item>
+        <item name="colorSecondary">@color/maira_accent</item>
+        <item name="android:windowBackground">@color/maira_bg</item>
+        <item name="android:statusBarColor">@color/maira_primary_dark</item>
+    </style>
+</resources>

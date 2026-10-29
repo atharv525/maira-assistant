@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">Maira</string>
+    <string name="setup_title">मायरा सेटअप</string>
+    <string name="accessibility_label">मायरा फ़ोन कंट्रोल</string>
+    <string name="accessibility_desc">मायरा को होम, बैक, नोटिफिकेशन, लॉक स्क्रीन, स्क्रीनशॉट, टाइप और स्क्रॉल जैसे काम आवाज़ से करने की अनुमति देता है। कोई डेटा फ़ोन से बाहर नहीं जाता।</string>
+</resources>
