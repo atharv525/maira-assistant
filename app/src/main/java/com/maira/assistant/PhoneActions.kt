@@ -30,7 +30,9 @@ import java.util.Locale
 data class ActionResult(
     val say: String,
     val deferred: (() -> Unit)? = null,
-    val expectReply: Boolean = false
+    val expectReply: Boolean = false,
+    /** Runs after Maira's screen is hidden; its return value is what Maira then says (e.g. screen reading). */
+    val deferredSay: (suspend () -> String)? = null
 )
 
 data class Contact(val name: String, val number: String)
@@ -39,9 +41,13 @@ class PhoneActions(private val ctx: Context) {
 
     private fun has(p: String) = ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED
 
+    /**
+     * Starts activities through the accessibility service when it is running: Android blocks activity starts from
+     * a background service ("Hey Maira"), but apps with a bound AccessibilityService are exempt.
+     */
     private fun start(i: Intent): Boolean = try {
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        ctx.startActivity(i); true
+        (MairaAccessibilityService.instance ?: ctx).startActivity(i); true
     } catch (e: ActivityNotFoundException) { false } catch (e: SecurityException) { false } catch (e: Exception) { false }
 
     // ---------------- flashlight
@@ -338,64 +344,40 @@ class PhoneActions(private val ctx: Context) {
     }
 
     // ---------------- open app
-    private val appAliases = mapOf(
-        "यूट्यूब" to "youtube", "यू ट्यूब" to "youtube", "व्हाट्सएप" to "whatsapp", "व्हाट्सऐप" to "whatsapp", "वॉट्सऐप" to "whatsapp",
-        "वाट्सएप" to "whatsapp", "व्हाट्सअप" to "whatsapp", "whats app" to "whatsapp", "इंस्टाग्राम" to "instagram", "इंस्टा" to "instagram", "insta" to "instagram",
-        "फेसबुक" to "facebook", "कैमरा" to "camera", "गैलरी" to "gallery", "फोटो" to "gallery", "photos" to "photos", "क्रोम" to "chrome",
-        "गूगल" to "google", "मैप" to "maps", "मैप्स" to "maps", "map" to "maps", "जीमेल" to "gmail", "फोन" to "phone", "डायलर" to "phone",
-        "कैलकुलेटर" to "calculator", "घड़ी" to "clock", "घडी" to "clock", "क्लॉक" to "clock", "प्ले स्टोर" to "play store", "प्लेस्टोर" to "play store",
-        "स्नैपचैट" to "snapchat", "टेलीग्राम" to "telegram", "फोनपे" to "phonepe", "फोन पे" to "phonepe", "पेटीएम" to "paytm",
-        "जियो" to "jio", "म्यूजिक" to "music", "स्पॉटिफाई" to "spotify", "कैलेंडर" to "calendar", "नोट्स" to "notes", "फाइल" to "files",
-        "फाइल्स" to "files", "फाइल मैनेजर" to "file manager", "कॉन्टैक्ट" to "contacts", "कांटेक्ट" to "contacts", "मैसेज" to "messages",
-        "मैसेजेस" to "messages", "अमेजन" to "amazon", "फ्लिपकार्ट" to "flipkart", "जोमैटो" to "zomato", "स्विगी" to "swiggy",
-        "ट्विटर" to "twitter", "नेटफ्लिक्स" to "netflix", "हॉटस्टार" to "hotstar", "जिओ हॉटस्टार" to "hotstar", "ओला" to "ola", "उबर" to "uber",
-        "गूगल पे" to "gpay", "जीपे" to "gpay", "g pay" to "gpay", "google pay" to "gpay", "भीम" to "bhim", "शेयरचैट" to "sharechat",
-        "मोज" to "moj", "जोश" to "josh", "ट्रूकॉलर" to "truecaller", "मीशो" to "meesho", "रैपिडो" to "rapido", "आई मैनेजर" to "i manager",
-        "वीवो" to "vivo", "रिकॉर्डर" to "recorder", "मौसम" to "weather", "चैट जीपीटी" to "chatgpt", "चैटजीपीटी" to "chatgpt", "जेमिनी" to "gemini",
-        "सेटिंग" to "settings", "सेटिंग्स" to "settings", "थीम" to "themes", "ब्राउजर" to "browser"
-    )
-    private val packageHints = mapOf(
-        "youtube" to "com.google.android.youtube", "whatsapp" to "com.whatsapp", "instagram" to "com.instagram.android",
-        "facebook" to "com.facebook.katana", "chrome" to "com.android.chrome", "maps" to "com.google.android.apps.maps",
-        "gmail" to "com.google.android.gm", "play store" to "com.android.vending", "gpay" to "com.google.android.apps.nbu.paisa.user",
-        "phonepe" to "com.phonepe.app", "paytm" to "net.one97.paytm", "telegram" to "org.telegram.messenger", "snapchat" to "com.snapchat.android",
-        "spotify" to "com.spotify.music", "chatgpt" to "com.openai.chatgpt", "gemini" to "com.google.android.apps.bard"
-    )
-
-    data class AppEntry(val label: String, val pkg: String)
-
-    private fun launchableApps(): List<AppEntry> {
+    private fun launchableApps(): List<AppMatcher.App> {
         val pm = ctx.packageManager
         val i = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        return pm.queryIntentActivities(i, 0).map { AppEntry(it.loadLabel(pm).toString(), it.activityInfo.packageName) }
+        return pm.queryIntentActivities(i, 0).map { AppMatcher.App(it.loadLabel(pm).toString(), it.activityInfo.packageName) }
+            .filter { it.pkg != ctx.packageName }
             .distinctBy { it.pkg }
     }
 
-    fun findApp(spoken: String): AppEntry? {
-        var q = spoken.trim().lowercase()
-        appAliases[q]?.let { q = it }
-        // also replace alias words inside phrase
-        if (Translit.hasDevanagari(q)) for ((k, v) in appAliases) if (q.contains(k)) { q = q.replace(k, v) }
-        val apps = launchableApps()
-        packageHints[q]?.let { pk -> apps.firstOrNull { it.pkg == pk }?.let { return it } }
-        apps.firstOrNull { it.label.lowercase() == q }?.let { return it }
-        apps.firstOrNull { it.label.lowercase().replace(" ", "") == q.replace(" ", "") }?.let { return it }
-        var best: AppEntry? = null; var bs = 0.0
-        for (a in apps) {
-            val l = a.label.lowercase()
-            var sc = Translit.similarity(q, l)
-            if (q.length >= 3 && (l.startsWith(q) || l.split(" ").any { it == q })) sc = maxOf(sc, 0.9)
-            if (sc > bs) { bs = sc; best = a }
-        }
-        return if (bs >= 0.6) best else null
-    }
+    fun findApp(spoken: String): AppMatcher.Result = AppMatcher.resolve(spoken, launchableApps())
 
-    fun openApp(name: String): String {
-        val app = findApp(name) ?: return "'$name' नाम का ऐप नहीं मिला।"
+    fun launch(app: AppMatcher.App): String {
         val i = ctx.packageManager.getLaunchIntentForPackage(app.pkg) ?: return "${app.label} नहीं खुल पाया।"
         return if (start(i)) "${app.label} खोल रही हूँ।" else "${app.label} नहीं खुल पाया।"
     }
 
+    // ---------------- screen & notifications
+    /** Captures the screen of the app under Maira (call after Maira has hidden itself). */
+    fun captureScreen(): ScreenCapture? = a11y()?.readScreen()
+
+    fun accessibilityOn() = a11y() != null
+    val needA11yText get() = needA11y
+
+    fun notifications(): Pair<String, ScreenCapture?> {
+        val nl = MairaNotificationListener.instance
+        val list = when {
+            nl != null -> nl.current()
+            a11y() != null -> a11y()!!.recentNotifications()
+            else -> return "नोटिफिकेशन पढ़ने के लिए सेटअप में '🔔 नोटिफिकेशन पढ़ना' चालू कीजिए।" to null
+        }
+        val say = ScreenText.notifications(list)
+        val ctxText = list.sortedByDescending { it.time }.take(10).joinToString("\n") { "${it.app}: ${it.title} - ${it.text}" }
+        return say to (if (list.isEmpty()) null else ScreenCapture("नोटिफिकेशन", "", ScreenText.cap(ctxText, ScreenText.MAX_CHARS)))
+    }
+
     fun help(): String =
-        "मैं ऐप खोल सकती हूँ, कॉल और मैसेज कर सकती हूँ, टॉर्च, आवाज़, अलार्म, टाइमर, वाई-फ़ाई, बैटरी, समय, फोटो, गाना, होम, बैक, स्क्रीनशॉट और लॉक संभाल सकती हूँ। और कोई भी सवाल पूछिए, मैं हिंदी में जवाब दूँगी।"
+        "मैं ऐप खोल सकती हूँ, स्क्रीन और नोटिफिकेशन पढ़कर सुना सकती हूँ, स्क्रीन का सार बता सकती हूँ, कॉल और मैसेज कर सकती हूँ, टॉर्च, आवाज़, अलार्म, टाइमर, वाई-फ़ाई, बैटरी, समय, फोटो, गाना, होम, बैक, स्क्रीनशॉट और लॉक संभाल सकती हूँ। और कोई भी सवाल पूछिए, मैं हिंदी में जवाब दूँगी।"
 }

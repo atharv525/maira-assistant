@@ -24,6 +24,8 @@ sealed class Command {
     data class Sms(val who: String, val text: String) : Command()
     data class OpenApp(val name: String) : Command()
     object Help : Command()
+    data class ReadScreen(val summarize: Boolean) : Command()
+    object ReadNotifications : Command()
 }
 
 /** Rule based Hinglish + Hindi command parser. Runs before the LLM. */
@@ -99,6 +101,14 @@ object CommandParser {
 
         // --- help
         if (t.hasAny("kya kya kar sakti", "क्या क्या कर सकती", "help", "हेल्प", "commands", "कमांड")) return Command.Help
+
+        // --- notifications read aloud ("notification padho"); "notification kholo" stays a global action below
+        if (t.hasAny("notification", "notifications", "notifiction", "नोटिफिकेशन", "नोटिफिकेशंस", "नोटिफिकेशन्स", "सूचना", "सूचनाएं", "सूचनाएँ") &&
+            t.hasAny("padho", "padh", "parho", "sunao", "suna", "batao", "bata", "read", "kya aaya", "kya aya", "kiska", "किसका",
+                "पढो", "पढ", "सुनाओ", "सुना", "बताओ", "बता", "क्या आया", "क्या आए", "रीड")) return Command.ReadNotifications
+
+        // --- screen reading
+        parseScreen(t)?.let { return it }
 
         // --- SMS: "papa ko message bhejo ki main late aaunga"
         Regex("^\\s*(.+?)\\s+(?:ko|को)\\s+(?:message|msg|sms|massage|मैसेज|मेसेज|मसेज|संदेश|एसएमएस)\\s*(?:bhejo|bhej do|bhejna|karo|kar do|send karo|भेजो|भेज दो|भेजना|करो|कर दो|सेंड करो)?\\s*(?:ki|kee|kii|कि|की|that)?\\s*(.*)$").find(t)?.let {
@@ -242,6 +252,30 @@ object CommandParser {
                 break
             }
         }
+        return null
+    }
+
+    private val SCREEN_WORDS = arrayOf("screen", "scren", "skrin", "स्क्रीन", "स्क्रिन", "page", "पेज")
+    private val THIS_WORDS = arrayOf("isme", "ismein", "ismen", "isko", "ise", "iska", "iske", "इसका", "इसके", "इसमें", "इसमे", "इस में", "इसको", "इसे")
+    private val SUMMARY_WORDS = arrayOf("summary", "summarize", "saransh", "samjhao", "samjha do", "samjhaao", "explain", "matlab", "saar",
+        "सारांश", "समरी", "समझाओ", "समझा दो", "समझाइए", "मतलब", "सार", "एक्सप्लेन")
+    private val READ_WORDS = arrayOf("padho", "padh", "parho", "padhke", "sunao", "read", "kya hai", "kya likha", "kya dikh", "dikh raha", "batao",
+        "पढो", "पढ", "सुनाओ", "क्या है", "क्या लिखा", "क्या दिख", "दिख रहा", "बताओ", "रीड")
+
+    /** "screen padho", "screen par kya hai", "ye kya likha hai", "padh ke sunao" / "screen ka summary batao", "screen samjhao". */
+    private fun parseScreen(t: String): Command? {
+        if (t.hasAny("screenshot", "screen shot", "स्क्रीनशॉट", "स्क्रीन शॉट", "स्क्रीनशॉर्ट", "home screen", "होम स्क्रीन", "lock screen", "लॉक स्क्रीन",
+                "screen lock", "स्क्रीन लॉक", "screen record", "स्क्रीन रिकॉर्ड", "brightness", "ब्राइटनेस", "screen time")) return null
+        if (t.hasAny("lock", "लॉक", "scroll", "स्क्रॉल")) return null
+        val screen = t.hasAny(*SCREEN_WORDS)
+        val thisWord = t.hasAny(*THIS_WORDS)
+        val likha = t.hasAny("kya likha", "kya likhaa", "क्या लिखा", "kya lika")
+        val readOnly = t.hasAny("padh ke sunao", "padhke sunao", "padh kar sunao", "padhkar sunao", "parh ke sunao", "पढ के सुनाओ", "पढके सुनाओ", "पढ कर सुनाओ", "पढकर सुनाओ") ||
+            t.trim() in setOf("ye padho", "yeh padho", "ise padho", "isko padho", "ये पढो", "यह पढो", "इसे पढो", "इसको पढो", "padho", "पढो")
+        if ((screen || likha || thisWord) && t.hasAny(*SUMMARY_WORDS)) return Command.ReadScreen(true)
+        if (likha || readOnly) return Command.ReadScreen(false)
+        if (thisWord && t.hasAny("padho", "padh", "sunao", "पढो", "पढ", "सुनाओ")) return Command.ReadScreen(false)
+        if (screen && t.hasAny(*READ_WORDS)) return Command.ReadScreen(false)
         return null
     }
 

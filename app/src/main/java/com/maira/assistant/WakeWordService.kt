@@ -120,7 +120,12 @@ class WakeWordService : Service() {
         app.appScope.launch {
             val r = try { app.brain.handle(text) } catch (e: Exception) { ActionResult("माफ़ कीजिए, कुछ गड़बड़ हो गई।") }
             r.deferred?.let { d -> h.postDelayed({ try { d() } catch (_: Exception) {} }, 200) }
-            app.tts.speak(r.say) {
+            val say = r.deferredSay?.let { ds ->
+                updateNotif(r.say)
+                kotlinx.coroutines.delay(300)
+                try { ds() } catch (e: Exception) { "माफ़ कीजिए, स्क्रीन नहीं पढ़ पाई।" }
+            } ?: r.say
+            app.tts.speak(say) {
                 updateNotif(null)
                 if (state == State.PAUSED) return@speak
                 state = if (r.expectReply) State.COMMAND else State.WAKE

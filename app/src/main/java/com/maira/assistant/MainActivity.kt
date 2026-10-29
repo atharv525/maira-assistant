@@ -187,7 +187,15 @@ class MainActivity : AppCompatActivity() {
             }
             refreshStatus()
             val d = r.deferred
-            if (d != null) {
+            val ds = r.deferredSay
+            if (ds != null) {
+                // Hide Maira so the app underneath is on screen, then read it and speak the result.
+                moveTaskToBack(true)
+                delay(900)
+                val out = try { ds() } catch (e: Exception) { "माफ़ कीजिए, स्क्रीन नहीं पढ़ पाई।" }
+                if (pos < msgs.size) { msgs[pos].text = out; adapter.notifyItemChanged(pos); rv.scrollToPosition(msgs.size - 1) }
+                app.tts.speak(out)
+            } else if (d != null) {
                 app.tts.speak(r.say)
                 moveTaskToBack(true)
                 delay(800)

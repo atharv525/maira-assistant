@@ -192,10 +192,18 @@ class SetupActivity : AppCompatActivity() {
         )
         if (Build.VERSION.SDK_INT >= 33) list.add(
             PermRow("🔔 नोटिफिकेशन", { granted(Manifest.permission.POST_NOTIFICATIONS) }) { permLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) })
-        list.add(PermRow("♿ फ़ोन कंट्रोल (Accessibility) — होम/बैक/लॉक/स्क्रीनशॉट/टाइप", { MairaAccessibilityService.isEnabled(this) }) {
+        list.add(PermRow("♿ फ़ोन कंट्रोल (Accessibility) — स्क्रीन पढ़ना/ऐप खोलना/होम/बैक/लॉक/टाइप", { MairaAccessibilityService.isEnabled(this) }) {
             AlertDialog.Builder(this).setTitle("फ़ोन कंट्रोल चालू करें")
                 .setMessage("अगली स्क्रीन में 'Installed apps / डाउनलोड की गई ऐप्स' में \"मायरा फ़ोन कंट्रोल\" चुनकर चालू (ON) कीजिए।\n\nVivo पर: Settings → Accessibility (सुलभता) → Installed services।\nअगर 'Restricted setting' लिखा आए: Settings → Apps → Maira → ऊपर ⋮ → 'Allow restricted settings' दबाइए, फिर दोबारा कोशिश करें।")
                 .setPositiveButton("खोलें") { _, _ -> safeStart(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                .setNegativeButton("बाद में", null).show()
+        })
+        list.add(PermRow("🔔 नोटिफिकेशन पढ़ना (\"notification padho\")", { MairaNotificationListener.isEnabled(this) }) {
+            AlertDialog.Builder(this).setTitle("नोटिफिकेशन पढ़ने की अनुमति")
+                .setMessage("अगली स्क्रीन में \"मायरा नोटिफिकेशन पढ़ना\" / Maira को चालू (Allow) कीजिए। मायरा सिर्फ़ आपके कहने पर नोटिफिकेशन पढ़कर सुनाएगी, कुछ भी फ़ोन से बाहर नहीं जाता।\n\nअगर 'Restricted setting' लिखा आए: Settings → Apps → Maira → ऊपर ⋮ → 'Allow restricted settings', फिर दोबारा कोशिश करें।\n\n(इसके बिना भी फ़ोन कंट्रोल चालू होने पर मायरा उसके बाद आए नए नोटिफिकेशन पढ़ सकती है।)")
+                .setPositiveButton("खोलें") { _, _ ->
+                    if (!safeStart(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))) safeStart(Intent(Settings.ACTION_SETTINGS))
+                }
                 .setNegativeButton("बाद में", null).show()
         })
         list.add(PermRow("🔋 बैटरी ऑप्टिमाइज़ेशन बंद (Hey Maira के लिए)", {

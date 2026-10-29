@@ -10,11 +10,85 @@ import android.os.Bundle
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
+import android.app.Notification
+import android.graphics.Rect
 
 class MairaAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() { super.onServiceConnected(); instance = this }
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType != AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) return
+        try {
+            val pkg = event.packageName?.toString() ?: return
+            if (pkg == packageName) return
+            val n = event.parcelableData as? Notification ?: return
+            if (n.flags and Notification.FLAG_ONGOING_EVENT != 0) return
+            val ex = n.extras
+            val title = ex?.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
+            val text = (ex?.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: ex?.getCharSequence(Notification.EXTRA_TEXT))?.toString()
+                ?: event.text.joinToString(" ")
+            if (title.isBlank() && text.isBlank()) return
+            synchronized(notifCache) {
+                notifCache.addFirst(NotifItem(appLabel(pkg), title, text, System.currentTimeMillis()))
+                while (notifCache.size > 15) notifCache.removeLast()
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun appLabel(pkg: String): String = try {
+        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+    } catch (_: Exception) { pkg }
+
+    /**
+     * Reads visible text of the app(s) on screen, skipping Maira's own windows, the keyboard and system bars.
+     * Call after Maira has hidden itself.
+     */
+    fun readScreen(): ScreenCapture? {
+        val roots = ArrayList<AccessibilityNodeInfo>()
+        try {
+            val ws = windows.orEmpty().sortedByDescending { it.layer }
+            for (w in ws) {
+                if (w.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
+                val r = w.root ?: continue
+                if (r.packageName?.toString() == packageName) continue
+                roots.add(r)
+            }
+            if (roots.isEmpty()) {
+                // e.g. notification shade pulled down: read system windows too
+                for (w in ws) {
+                    if (w.type != AccessibilityWindowInfo.TYPE_SYSTEM) continue
+                    val r = w.root ?: continue
+                    if (r.packageName?.toString() == packageName) continue
+                    roots.add(r)
+                }
+            }
+        } catch (_: Exception) {}
+        if (roots.isEmpty()) rootInActiveWindow?.takeIf { it.packageName?.toString() != packageName }?.let { roots.add(it) }
+        if (roots.isEmpty()) return null
+        val items = ArrayList<ScreenItem>()
+        val rect = Rect()
+        var budget = 2500
+        for ((g, root) in roots.withIndex()) {
+            val stack = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
+            stack.addLast(root to 0)
+            while (stack.isNotEmpty() && budget-- > 0) {
+                val (n, depth) = stack.removeLast()
+                if (!n.isVisibleToUser) continue
+                n.getBoundsInScreen(rect)
+                val t = n.text?.toString()
+                val d = n.contentDescription?.toString()
+                val isPwd = n.isPassword
+                if (!isPwd && !t.isNullOrBlank() && !(n.isEditable && n.isShowingHintText)) items.add(ScreenItem(t, rect.top, rect.left, g))
+                if (!d.isNullOrBlank() && d != t) items.add(ScreenItem(d, rect.top, rect.left, g))
+                if (depth < 60) for (i in n.childCount - 1 downTo 0) n.getChild(i)?.let { stack.addLast(it to depth + 1) }
+            }
+        }
+        val pkg = roots.first().packageName?.toString() ?: ""
+        return ScreenCapture(appLabel(pkg), pkg, ScreenText.compose(items))
+    }
+
+    fun recentNotifications(): List<NotifItem> = synchronized(notifCache) { notifCache.toList() }
     override fun onInterrupt() {}
     override fun onUnbind(intent: Intent?): Boolean { instance = null; return super.onUnbind(intent) }
     override fun onDestroy() { instance = null; super.onDestroy() }
@@ -80,6 +154,7 @@ class MairaAccessibilityService : AccessibilityService() {
 
     companion object {
         @Volatile var instance: MairaAccessibilityService? = null
+        private val notifCache = ArrayDeque<NotifItem>()
 
         fun isEnabled(ctx: Context): Boolean {
             if (instance != null) return true
