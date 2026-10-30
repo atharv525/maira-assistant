@@ -16,22 +16,35 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = mairaVersionCode
-        versionName = "1.2"
+        versionName = "1.3"
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
-    // One fixed signing key (committed) so local and CI builds can update each other in place.
+    // Private release key: signing/maira-release.jks is decrypted from the committed
+    // signing/maira-release.jks.enc using MAIRA_SIGNING_PASS (GitHub Actions secret).
+    // The decrypted .jks and the password are never committed. No key = build fails (never ship a wrong-key APK).
+    val signPass: String? = System.getenv("MAIRA_SIGNING_PASS") ?: (project.findProperty("mairaSigningPass") as String?)
+    val keyFile = rootProject.file("signing/maira-release.jks")
     signingConfigs {
         create("maira") {
-            storeFile = rootProject.file("signing/maira.jks")
-            storePassword = "maira-assistant"
+            storeFile = keyFile
+            storePassword = signPass
             keyAlias = "maira"
-            keyPassword = "maira-assistant"
+            keyPassword = signPass
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
     buildTypes {
         debug { signingConfig = signingConfigs.getByName("maira") }
         release { isMinifyEnabled = false; signingConfig = signingConfigs.getByName("maira") }
+    }
+    if (!keyFile.exists() || signPass.isNullOrBlank()) {
+        gradle.taskGraph.whenReady {
+            if (allTasks.any { it.name.startsWith("package") || it.name.startsWith("assemble") })
+                throw GradleException("Maira signing key missing: decrypt signing/maira-release.jks.enc with MAIRA_SIGNING_PASS first.")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

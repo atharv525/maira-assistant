@@ -25,11 +25,20 @@ jobs:
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           printf 'versionCode=%s\nversionName=%s\ncommit=%s\n' "$CODE" "$NAME" "$GITHUB_SHA" > version.txt
           cat version.txt
+      - name: Decrypt signing key
+        env:
+          MAIRA_SIGNING_PASS: ${{ secrets.MAIRA_SIGNING_PASS }}
+        run: |
+          if [ -z "$MAIRA_SIGNING_PASS" ]; then echo "::error::Secret MAIRA_SIGNING_PASS missing"; exit 1; fi
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in signing/maira-release.jks.enc -out signing/maira-release.jks -pass env:MAIRA_SIGNING_PASS
       - name: Build
+        env:
+          MAIRA_SIGNING_PASS: ${{ secrets.MAIRA_SIGNING_PASS }}
         run: |
           chmod +x gradlew
           ./gradlew testDebugUnitTest assembleDebug --no-daemon
           cp app/build/outputs/apk/debug/*.apk Maira.apk
+          rm -f signing/maira-release.jks
       - uses: actions/upload-artifact@v4
         with:
           name: Maira-apk

@@ -1,6 +1,6 @@
 # Maira — offline Hindi voice assistant (Android)
 
-Kotlin, single module, minSdk 26 / targetSdk 34, arm64-v8a. APK: `Maira.apk`, signed with the committed key `signing/maira.jks` (same key locally and in CI, so builds update each other in place).
+Kotlin, single module, minSdk 26 / targetSdk 34, arm64-v8a. APK: `Maira.apk`, signed with a private RSA-4096 release key. Only the AES-256 encrypted `signing/maira-release.jks.enc` is in the repo; CI decrypts it with the `MAIRA_SIGNING_PASS` Actions secret. Builds fail if the key is missing, so a wrong-key APK is never published.
 
 * Brain: MediaPipe LLM Inference `com.google.mediapipe:tasks-genai:0.10.24` + Qwen2.5 `.task` model (downloaded in-app via DownloadManager, or picked from storage). Prompt uses ChatML; session prompt templates are set to empty so the prompt is passed verbatim.
 * Voice: Android `SpeechRecognizer` (hi-IN, `EXTRA_PREFER_OFFLINE`), `TextToSpeech` Locale("hi","IN").

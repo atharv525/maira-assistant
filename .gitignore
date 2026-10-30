@@ -7,3 +7,6 @@ build.log
 .idea/
 *.iml
 Maira.apk
+signing/*.jks
+!signing/*.jks.enc
+*.jks
