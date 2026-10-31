@@ -34,39 +34,28 @@ import java.io.File
 
 class SetupActivity : AppCompatActivity() {
     private lateinit var tvModel: TextView
-    private lateinit var pb: ProgressBar
-    private lateinit var btnCancel: Button
     private lateinit var permList: LinearLayout
     private lateinit var sw: MaterialSwitch
     private val h = Handler(Looper.getMainLooper())
     private val app get() = application as MairaApp
-    @Volatile private var importing = false
 
     private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refreshPerms() }
 
-    private val pickModel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) importModel(uri)
-    }
-
-    private val poller = object : Runnable {
-        override fun run() { refreshModel(); h.postDelayed(this, 1000) }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_setup)
         tvModel = findViewById(R.id.tvModelStatus)
-        pb = findViewById(R.id.pbModel)
-        btnCancel = findViewById(R.id.btnCancelDownload)
         permList = findViewById(R.id.permList)
         sw = findViewById(R.id.swWake)
 
-        findViewById<Button>(R.id.btnDownloadBig).setOnClickListener { confirmDownload(ModelManager.BIG) }
-        findViewById<Button>(R.id.btnDownloadSmall).setOnClickListener { confirmDownload(ModelManager.SMALL) }
-        findViewById<Button>(R.id.btnPickModel).setOnClickListener {
-            try { pickModel.launch(arrayOf("*/*")) } catch (e: Exception) { toast("फ़ाइल चुनने वाला ऐप नहीं मिला") }
+        val swBrain = findViewById<MaterialSwitch>(R.id.swBrain)
+        swBrain.isChecked = Prefs.brainEnabled(this)
+        swBrain.setOnCheckedChangeListener { _, on ->
+            Prefs.setBrainEnabled(this, on)
+            if (on) Thread { com.maira.assistant.brain.MairaBrainLoader.get(applicationContext) }.start()
+            refreshModel()
         }
-        btnCancel.setOnClickListener { ModelManager.cancelDownload(this); refreshModel() }
         findViewById<Button>(R.id.btnOfflineSpeech).setOnClickListener { openOfflineSpeech() }
         findViewById<Button>(R.id.btnTtsData).setOnClickListener { openTtsSettings() }
         findViewById<Button>(R.id.btnTestVoice).setOnClickListener {
@@ -100,81 +89,22 @@ class SetupActivity : AppCompatActivity() {
         WakeWordService.uiActive = true
         WakeWordService.send(this, WakeWordService.ACTION_PAUSE)
         refreshPerms()
-        h.post(poller)
+        refreshModel()
     }
 
-    override fun onPause() { super.onPause(); h.removeCallbacks(poller); WakeWordService.uiActive = false; WakeWordService.send(this, WakeWordService.ACTION_RESUME) }
+    override fun onPause() { super.onPause(); WakeWordService.uiActive = false; WakeWordService.send(this, WakeWordService.ACTION_RESUME) }
 
-    // ---------------- model
-    private fun confirmDownload(info: ModelManager.ModelInfo) {
-        val mb = info.sizeBytes / (1024 * 1024)
-        AlertDialog.Builder(this)
-            .setTitle("मॉडल डाउनलोड")
-            .setMessage("${info.name}\nसाइज़: लगभग $mb MB\n\nWi-Fi पर डाउनलोड करें। यह सिर्फ़ एक बार होगा, उसके बाद मायरा बिना इंटरनेट के चलेगी।")
-            .setPositiveButton("डाउनलोड करें") { _, _ ->
-                try { ModelManager.startDownload(this, info); toast("डाउनलोड शुरू — नोटिफिकेशन में भी दिखेगा") }
-                catch (e: Exception) { toast("डाउनलोड शुरू नहीं हुआ: ${e.message}") }
-                refreshModel()
-            }
-            .setNegativeButton("रहने दें", null)
-            .show()
-    }
+    /** Qwen .task files downloaded by v1.0–v1.3 (app-owned). Only deleted when the user taps the button. */
+    private fun oldModelFiles(): List<File> =
+        listOfNotNull(getExternalFilesDir(null)?.let { File(it, "models") }, File(filesDir, "models"))
+            .flatMap { it.listFiles()?.toList() ?: emptyList() }
+            .filter { it.isFile && (it.name.endsWith(".task") || it.name.endsWith(".part") || it.name.endsWith(".copy")) }
 
+    // ---------------- brain status
     private fun refreshModel() {
-        if (importing) return
-        val st = ModelManager.poll(this)
-        if (st != null && st.status != DownloadManager.STATUS_SUCCESSFUL && st.status != DownloadManager.STATUS_FAILED) {
-            pb.visibility = View.VISIBLE; btnCancel.visibility = View.VISIBLE
-            val pct = if (st.total > 0) (st.done * 1000 / st.total).toInt() else 0
-            pb.isIndeterminate = st.total <= 0
-            pb.progress = pct
-            val doneMb = st.done / (1024 * 1024); val totMb = if (st.total > 0) st.total / (1024 * 1024) else 0
-            val s = when (st.status) {
-                DownloadManager.STATUS_PAUSED -> "रुका हुआ (इंटरनेट का इंतज़ार)…"
-                DownloadManager.STATUS_PENDING -> "शुरू हो रहा है…"
-                else -> "डाउनलोड हो रहा है…"
-            }
-            tvModel.text = "$s $doneMb / $totMb MB (${pct / 10}%)"
-            return
-        }
-        pb.visibility = View.GONE; btnCancel.visibility = View.GONE
-        if (st?.status == DownloadManager.STATUS_FAILED) {
-            tvModel.text = "डाउनलोड फ़ेल हो गया (कोड ${st.reason})। इंटरनेट और फ़ोन की जगह (storage) जाँचकर फिर कोशिश करें।"
-            return
-        }
-        val path = Prefs.modelPath(this)
-        tvModel.text = if (path != null && File(path).exists()) {
-            val f = File(path)
-            "✓ मॉडल तैयार: ${f.name} (${f.length() / (1024 * 1024)} MB)\nअब मायरा पूरी तरह ऑफ़लाइन चलेगी।"
-        } else "अभी कोई मॉडल नहीं है। फ़ोन में 6 GB RAM के लिए 1.5B (बेहतर) या 0.5B (तेज़) चुनें।"
-    }
-
-    private fun importModel(uri: Uri) {
-        val name = ModelManager.displayName(this, uri)
-        if (!name.endsWith(".task", true)) {
-            toast("कृपया .task फ़ाइल चुनें (MediaPipe मॉडल)"); return
-        }
-        importing = true
-        pb.visibility = View.VISIBLE; pb.isIndeterminate = false
-        tvModel.text = "फ़ाइल कॉपी हो रही है… $name"
-        app.appScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    ModelManager.importModel(applicationContext, uri) { done, total ->
-                        runOnUiThread {
-                            if (total > 0) pb.progress = (done * 1000 / total).toInt()
-                            tvModel.text = "कॉपी: ${done / (1024 * 1024)} / ${if (total > 0) total / (1024 * 1024) else 0} MB"
-                        }
-                    }
-                }
-                toast("मॉडल सेट हो गया ✓")
-            } catch (e: Exception) {
-                toast("कॉपी नहीं हो पाई: ${e.message}")
-            } finally {
-                importing = false
-                refreshModel()
-            }
-        }
+        tvModel.text = if (Prefs.brainEnabled(this))
+            "✓ मायरा ब्रेन चालू — मायरा का अपना छोटा मॉडल (लगभग 4 MB) ऐप के अंदर ही है। कोई डाउनलोड या इंटरनेट नहीं चाहिए।\nजो बात मायरा ब्रेन न समझे, वो पुराने नियमों से समझी जाती है।"
+        else "मायरा ब्रेन बंद है — अभी सिर्फ़ पुराने नियम वाली कमांड चलेंगी। ऊपर का स्विच चालू कीजिए।"
     }
 
     // ---------------- permissions
@@ -188,7 +118,12 @@ class SetupActivity : AppCompatActivity() {
             PermRow("🎤 माइक (सुनने के लिए)", { granted(Manifest.permission.RECORD_AUDIO) }) { permLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO)) },
             PermRow("👥 कॉन्टैक्ट (नाम से कॉल/मैसेज)", { granted(Manifest.permission.READ_CONTACTS) }) { permLauncher.launch(arrayOf(Manifest.permission.READ_CONTACTS)) },
             PermRow("📞 कॉल करना", { granted(Manifest.permission.CALL_PHONE) }) { permLauncher.launch(arrayOf(Manifest.permission.CALL_PHONE)) },
-            PermRow("✉️ SMS भेजना", { granted(Manifest.permission.SEND_SMS) }) { permLauncher.launch(arrayOf(Manifest.permission.SEND_SMS)) }
+            PermRow("✉️ SMS भेजना", { granted(Manifest.permission.SEND_SMS) }) { permLauncher.launch(arrayOf(Manifest.permission.SEND_SMS)) },
+            PermRow("📒 कॉल लॉग (\"missed call batao\")", { granted(Manifest.permission.READ_CALL_LOG) }) { permLauncher.launch(arrayOf(Manifest.permission.READ_CALL_LOG)) },
+            PermRow("☎️ कॉल उठाना/काटना (\"call uthao\")", { granted(Manifest.permission.ANSWER_PHONE_CALLS) }) { permLauncher.launch(arrayOf(Manifest.permission.ANSWER_PHONE_CALLS)) },
+            PermRow("🔆 सिस्टम सेटिंग बदलना (ब्राइटनेस, ऑटो रोटेट)", { Settings.System.canWrite(this) }) {
+                safeStart(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:$packageName")))
+            }
         )
         if (Build.VERSION.SDK_INT >= 33) list.add(
             PermRow("🔔 नोटिफिकेशन", { granted(Manifest.permission.POST_NOTIFICATIONS) }) { permLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) })
@@ -219,6 +154,22 @@ class SetupActivity : AppCompatActivity() {
             safeStart(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
         })
 
+        oldModelFiles().takeIf { it.isNotEmpty() }?.let { files ->
+            val mb = files.sumOf { it.length() } / (1024 * 1024)
+            val clean = Button(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = "🗑️ पुराना Qwen AI मॉडल हटाएँ ($mb MB जगह खाली करें)"; isAllCaps = false
+            }
+            clean.setOnClickListener {
+                AlertDialog.Builder(this).setTitle("पुराना AI मॉडल हटाएँ?")
+                    .setMessage("v1.4 से मायरा सिर्फ़ अपने दिमाग (मायरा ब्रेन) से चलती है, इसलिए पुरानी $mb MB की मॉडल फ़ाइल की ज़रूरत नहीं है।")
+                    .setPositiveButton("हटाएँ") { _, _ ->
+                        files.forEach { try { it.delete() } catch (_: Exception) {} }
+                        getSharedPreferences("maira", MODE_PRIVATE).edit().remove("model_path").apply()
+                        permList.removeView(clean); toast("पुराना मॉडल हटा दिया")
+                    }.setNegativeButton("रहने दें", null).show()
+            }
+            permList.addView(clean)
+        }
         val auto = Button(this).apply { text = "🪄 ऑटो सेटअप (मायरा खुद बताएगी)" }
         auto.setOnClickListener { AutoSetupActivity.start(this, restart = true) }
         permList.addView(auto)
@@ -241,7 +192,8 @@ class SetupActivity : AppCompatActivity() {
         permList.addView(bolo)
         val all = Button(this).apply { text = "सारी ज़रूरी अनुमतियाँ एक साथ दें" }
         all.setOnClickListener {
-            val p = mutableListOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_CONTACTS, Manifest.permission.CALL_PHONE, Manifest.permission.SEND_SMS)
+            val p = mutableListOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_CONTACTS, Manifest.permission.CALL_PHONE, Manifest.permission.SEND_SMS,
+            Manifest.permission.READ_CALL_LOG, Manifest.permission.ANSWER_PHONE_CALLS)
             if (Build.VERSION.SDK_INT >= 33) p.add(Manifest.permission.POST_NOTIFICATIONS)
             permLauncher.launch(p.toTypedArray())
         }

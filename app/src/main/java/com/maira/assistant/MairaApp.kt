@@ -10,7 +10,6 @@ import kotlinx.coroutines.SupervisorJob
 
 class MairaApp : Application() {
     lateinit var tts: TtsManager
-    lateinit var llm: LlmEngine
     lateinit var brain: AssistantBrain
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -24,11 +23,27 @@ class MairaApp : Application() {
         nm.createNotificationChannel(
             NotificationChannel(CH_UPDATE, "मायरा अपडेट", NotificationManager.IMPORTANCE_HIGH)
         )
-        ModelManager.autoDetect(this)
+        cancelOldModelDownload()
         tts = TtsManager(this)
-        llm = LlmEngine(this)
         brain = AssistantBrain(this)
         try { Watchdog.schedule(this) } catch (_: Exception) {}
+        // Maira Brain (own model, ~4 MB in the APK): load in the background so the first command is fast.
+        if (Prefs.brainEnabled(this)) Thread { com.maira.assistant.brain.MairaBrainLoader.get(this) }.start()
+    }
+
+    /** v1.4: no third-party AI model any more. Stop an unfinished Qwen download left by older versions (finished files are left alone). */
+    private fun cancelOldModelDownload() {
+        val id = Prefs.downloadId(this)
+        if (id < 0) return
+        try {
+            val dm = getSystemService(android.app.DownloadManager::class.java)
+            var done = false
+            dm.query(android.app.DownloadManager.Query().setFilterById(id))?.use { c ->
+                if (c.moveToFirst()) done = c.getInt(c.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_STATUS)) == android.app.DownloadManager.STATUS_SUCCESSFUL
+            }
+            if (!done) dm.remove(id)
+        } catch (_: Exception) {}
+        Prefs.setDownload(this, -1, null)
     }
 
     companion object {
@@ -41,8 +56,9 @@ class MairaApp : Application() {
 
 object Prefs {
     private fun p(ctx: Context) = ctx.getSharedPreferences("maira", Context.MODE_PRIVATE)
-    fun modelPath(ctx: Context): String? = p(ctx).getString("model_path", null)
-    fun setModelPath(ctx: Context, path: String?) = p(ctx).edit().putString("model_path", path).apply()
+    /** "Apna Brain (Maira Brain)" switch in Setup; default ON. */
+    fun brainEnabled(ctx: Context) = p(ctx).getBoolean("brain", true)
+    fun setBrainEnabled(ctx: Context, v: Boolean) = p(ctx).edit().putBoolean("brain", v).apply()
     fun wakeEnabled(ctx: Context) = p(ctx).getBoolean("wake", false)
     fun setWakeEnabled(ctx: Context, v: Boolean) = p(ctx).edit().putBoolean("wake", v).apply()
     fun downloadId(ctx: Context) = p(ctx).getLong("dl_id", -1L)
@@ -61,9 +77,6 @@ object Prefs {
     fun setLong(ctx: Context, k: String, v: Long) = p(ctx).edit().putLong("l_$k", v).apply()
     fun int(ctx: Context, k: String, def: Int = 0) = p(ctx).getInt("i_$k", def)
     fun setInt(ctx: Context, k: String, v: Int) = p(ctx).edit().putInt("i_$k", v).apply()
-    /** 0 = not asked, 1 = mobile data allowed for the model download, 2 = Wi-Fi only */
-    fun meteredChoice(ctx: Context) = int(ctx, "metered")
-    fun setMeteredChoice(ctx: Context, v: Int) = setInt(ctx, "metered", v)
     fun screenBolo(ctx: Context) = flag(ctx, "screen_bolo")
     fun setScreenBolo(ctx: Context, v: Boolean) = setFlag(ctx, "screen_bolo", v)
     fun updateArmed(ctx: Context) = long(ctx, "update_armed") > System.currentTimeMillis()

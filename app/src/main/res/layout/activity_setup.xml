@@ -23,7 +23,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="1. दिमाग (AI मॉडल) — सिर्फ़ एक बार डाउनलोड"
+            android:text="1. मायरा ब्रेन (अपना दिमाग)"
             android:textColor="@color/text_dark"
             android:textSize="18sp"
             android:textStyle="bold" />
@@ -36,41 +36,13 @@
             android:textColor="@color/text_muted"
             android:textSize="15sp" />
 
-        <ProgressBar
-            android:id="@+id/pbModel"
-            style="?android:attr/progressBarStyleHorizontal"
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/swBrain"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:max="1000"
-            android:visibility="gone" />
-
-        <Button
-            android:id="@+id/btnDownloadBig"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Qwen2.5 1.5B डाउनलोड करें (1.6 GB, बेहतर हिंदी)" />
-
-        <Button
-            android:id="@+id/btnDownloadSmall"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Qwen2.5 0.5B डाउनलोड करें (550 MB, तेज़)" />
-
-        <Button
-            android:id="@+id/btnPickModel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="फ़ोन से .task फ़ाइल चुनें" />
-
-        <Button
-            android:id="@+id/btnCancelDownload"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="डाउनलोड रोकें"
-            android:visibility="gone" />
+            android:text="Apna Brain (Maira Brain) — आपकी बात समझने वाला मायरा का अपना मॉडल"
+            android:textSize="16sp" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -134,7 +106,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="सब कुछ फ़ोन पर ही चलता है। मॉडल डाउनलोड के बाद इंटरनेट की ज़रूरत नहीं।"
+            android:text="सब कुछ फ़ोन पर ही चलता है। मायरा सिर्फ़ अपने दिमाग (मायरा ब्रेन) से चलती है, कोई बाहरी AI मॉडल नहीं, कोई डाउनलोड नहीं।"
             android:textColor="@color/text_muted"
             android:textSize="14sp" />
     </LinearLayout>

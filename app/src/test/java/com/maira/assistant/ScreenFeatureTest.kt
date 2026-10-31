@@ -81,17 +81,6 @@ class ScreenFeatureTest {
         assertEquals("short", ScreenText.fitTokens("short", 300))
     }
 
-    @Test fun summaryPromptContainsScreen() {
-        val cap = ScreenCapture("WhatsApp", "com.whatsapp", "Rahul: kal 5 baje milte hain")
-        val pr = LlmEngine.buildSummaryPrompt(cap)
-        assertTrue(pr.contains("kal 5 baje"))
-        assertTrue(pr.contains("WhatsApp"))
-        assertTrue(pr.startsWith("<" + "|im_start|>system"))
-        val fu = LlmEngine.buildPrompt(emptyList(), "isme time kya hai", cap)
-        assertTrue(fu.contains("kal 5 baje"))
-        assertFalse(LlmEngine.buildPrompt(emptyList(), "hello").contains("स्क्रीन पर"))
-    }
-
     @Test fun notificationSpeech() {
         assertEquals("अभी कोई नया नोटिफिकेशन नहीं है।", ScreenText.notifications(emptyList()))
         val s = ScreenText.notifications(listOf(

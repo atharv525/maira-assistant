@@ -92,11 +92,9 @@ class AutoSetupActivity : AppCompatActivity() {
         active = true
         buildUi()
         Prefs.setSetupShown(this)
-        Prefs.setFlag(this, "auto_model")
         WakeWordService.uiActive = true
         WakeWordService.send(this, WakeWordService.ACTION_PAUSE)
         checkSpeechPack()
-        maybeAskMetered()
         app.appScope.launch(Dispatchers.IO) { try { Updater.checkBlocking(applicationContext) } catch (_: Exception) {} }
         h.post(ticker)
     }
@@ -169,7 +167,8 @@ class AutoSetupActivity : AppCompatActivity() {
     private fun granted(p: String) = ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED
 
     private fun runtimePerms(): List<String> {
-        val p = mutableListOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_CONTACTS, Manifest.permission.CALL_PHONE, Manifest.permission.SEND_SMS)
+        val p = mutableListOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_CONTACTS, Manifest.permission.CALL_PHONE, Manifest.permission.SEND_SMS,
+            Manifest.permission.READ_CALL_LOG, Manifest.permission.ANSWER_PHONE_CALLS)
         if (Build.VERSION.SDK_INT >= 33) p.add(Manifest.permission.POST_NOTIFICATIONS)
         return p
     }
@@ -322,60 +321,19 @@ class AutoSetupActivity : AppCompatActivity() {
         }
         try { Watchdog.schedule(this) } catch (_: Exception) {}
         tvCount.text = ""; tvEmoji.text = "🎉"; tvTitle.text = "सब तैयार है!"
-        tvBody.text = "अब ऐप बंद करके बस \"मायरा\" बोलिए, फिर अपना काम बताइए।\nAI दिमाग अपने आप डाउनलोड होता रहेगा और नए अपडेट भी अपने आप आएँगे।"
+        tvBody.text = "अब ऐप बंद करके बस \"मायरा\" बोलिए, फिर अपना काम बताइए।\nमायरा अपने दिमाग (मायरा ब्रेन) से फ़ोन में ही चलती है, और नए अपडेट अपने आप आएँगे।"
         btnMain.text = "मायरा शुरू करें"; btnRepeat.visibility = View.GONE; btnSkip.visibility = View.GONE
         btnMain.setOnClickListener { finish() }
-        app.tts.speak("सेटअप पूरा हो गया! अब ऐप बंद करके बस 'मायरा' बोलिए, फिर अपना काम बताइए। मेरा AI दिमाग अपने आप डाउनलोड होता रहेगा, और नए अपडेट भी अपने आप आएँगे।") {
+        app.tts.speak("सेटअप पूरा हो गया! अब ऐप बंद करके बस 'मायरा' बोलिए, फिर अपना काम बताइए। नए अपडेट अपने आप आएँगे।") {
             h.postDelayed({ if (!isFinishing) finish() }, 800)
         }
     }
 
-    // ------------------------------------------------------------------ model download
-    private fun maybeAskMetered() {
-        if (ModelManager.hasModel(this) || Prefs.downloadId(this) >= 0) return
-        if (Prefs.meteredChoice(this) == 0 && ModelManager.unmetered(this) == false) {
-            askingMetered = true
-            val info = ModelManager.defaultFor(this)
-            val mb = info.sizeBytes / (1024 * 1024)
-            val msg = "आप अभी मोबाइल डेटा पर हैं। मायरा का AI दिमाग लगभग $mb MB का है। अभी मोबाइल डेटा से डाउनलोड करूँ, या Wi-Fi मिलने पर अपने आप?"
-            app.tts.speak(msg)
-            AlertDialog.Builder(this).setTitle("AI दिमाग डाउनलोड").setMessage(msg).setCancelable(false)
-                .setPositiveButton("हाँ, अभी डाउनलोड करो") { _, _ -> Prefs.setMeteredChoice(this, 1); afterMetered() }
-                .setNegativeButton("Wi-Fi पर") { _, _ -> Prefs.setMeteredChoice(this, 2); afterMetered() }
-                .show()
-        } else ModelManager.ensureAuto(this)
-    }
-
-    private fun afterMetered() {
-        askingMetered = false
-        app.tts.stop()
-        ModelManager.ensureAuto(this)
-        refresh()
-    }
-
-    private var lastEnsure = 0L
+    // ------------------------------------------------------------------ brain status
+    /** v1.4: Maira runs only on the user's own model (bundled in the APK). Nothing to download. */
     private fun refreshModel() {
-        val now = System.currentTimeMillis()
-        if (now - lastEnsure > 30_000) { lastEnsure = now; if (!askingMetered) ModelManager.ensureAuto(this) }
-        val st = ModelManager.poll(this)
-        if (st != null && st.status != DownloadManager.STATUS_SUCCESSFUL && st.status != DownloadManager.STATUS_FAILED) {
-            pbModel.visibility = View.VISIBLE
-            pbModel.isIndeterminate = st.total <= 0
-            if (st.total > 0) pbModel.progress = (st.done * 1000 / st.total).toInt()
-            val done = st.done / (1024 * 1024); val tot = if (st.total > 0) st.total / (1024 * 1024) else 0
-            tvModel.text = when (st.status) {
-                DownloadManager.STATUS_PAUSED -> "🧠 AI दिमाग: Wi-Fi/इंटरनेट का इंतज़ार… $done / $tot MB"
-                DownloadManager.STATUS_PENDING -> "🧠 AI दिमाग: डाउनलोड शुरू हो रहा है…"
-                else -> "🧠 AI दिमाग डाउनलोड हो रहा है: $done / $tot MB"
-            }
-            return
-        }
         pbModel.visibility = View.GONE
-        tvModel.text = when {
-            ModelManager.hasModel(this) -> "🧠 AI दिमाग तैयार ✓"
-            Prefs.int(this, "dl_fails") > 0 -> "🧠 डाउनलोड रुका — थोड़ी देर में अपने आप फिर कोशिश होगी"
-            else -> "🧠 AI दिमाग: ${ModelManager.defaultFor(this).name}"
-        }
+        tvModel.text = if (Prefs.brainEnabled(this)) "🧠 मायरा ब्रेन (अपना दिमाग) फ़ोन में ही है ✓ — कोई डाउनलोड नहीं" else "🧠 मायरा ब्रेन बंद है (⚙ सेटअप में चालू करें)"
     }
 
     // ------------------------------------------------------------------ deep links

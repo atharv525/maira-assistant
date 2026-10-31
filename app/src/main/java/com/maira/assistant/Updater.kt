@@ -189,18 +189,12 @@ class InstallResultReceiver : BroadcastReceiver() {
     }
 }
 
-/** DownloadManager finished something: the AI model or an app update. */
+/** DownloadManager finished something: an app update. */
 class DownloadDoneReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
         if (id < 0) return
-        if (id == Prefs.downloadId(ctx)) {
-            val st = ModelManager.poll(ctx)
-            if (st?.status == DownloadManager.STATUS_SUCCESSFUL) {
-                try { MairaApp.instance.tts.speak("मायरा का AI दिमाग डाउनलोड हो गया। अब मैं बिना इंटरनेट के आपके सवालों के जवाब दे सकती हूँ।") } catch (_: Exception) {}
-            } else if (st?.status == DownloadManager.STATUS_FAILED) Watchdog.kickSoon(ctx, 2)
-            return
-        }
+        if (id == Prefs.downloadId(ctx)) { Prefs.setDownload(ctx, -1, null); return }   // old AI-model download (removed in v1.4)
         if (id == Prefs.long(ctx, "upd_dl", -1)) {
             val pr = goAsync()
             Thread { try { Updater.onDownloadComplete(ctx.applicationContext, id) } finally { pr.finish() } }.start()

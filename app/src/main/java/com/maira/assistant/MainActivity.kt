@@ -74,13 +74,10 @@ class MainActivity : AppCompatActivity() {
         et.setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { sendTyped(); true } else false }
         findViewById<ImageButton>(R.id.btnSetup).setOnClickListener { startActivity(Intent(this, SetupActivity::class.java)) }
 
-        addBot("नमस्ते! मैं मायरा हूँ। माइक दबाकर बोलिए — जैसे \"YouTube खोलो\", \"मम्मी को कॉल करो\", \"टॉर्च जलाओ\" या कोई भी सवाल पूछिए।")
+        addBot("नमस्ते! मैं मायरा हूँ। माइक दबाकर बोलिए — जैसे \"YouTube खोलो\", \"मम्मी को कॉल करो\", \"टॉर्च जलाओ\" या \"सुबह 6 बजे का अलार्म लगाओ\"।")
 
         if (!Prefs.autoSetupDone(this)) {
             AutoSetupActivity.start(this)
-        } else {
-            Prefs.setFlag(this, "auto_model")
-            ModelManager.ensureAuto(this)
         }
         // auto-update: check on every launch (and daily from the watchdog)
         app.appScope.launch(kotlinx.coroutines.Dispatchers.IO) { try { Updater.checkBlocking(applicationContext, force = true) } catch (_: Exception) {} }
@@ -103,7 +100,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (Prefs.autoSetupDone(this)) ModelManager.ensureAuto(this)
         WakeWordService.uiActive = true
         WakeWordService.send(this, WakeWordService.ACTION_PAUSE)
         refreshStatus()
@@ -120,20 +116,17 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() { speech.destroy(); super.onDestroy() }
 
     private fun preloadModel() {
-        if (Prefs.modelPath(this) == null || app.llm.isLoaded || app.llm.loading) return
+        if (!Prefs.brainEnabled(this) || com.maira.assistant.brain.MairaBrainLoader.isLoaded()) return
         lifecycleScope.launch {
-            tvStatus.text = "AI दिमाग लोड हो रहा है… (10-30 सेकंड)"
-            val ok = app.llm.ensureLoaded()
-            tvStatus.text = if (ok) "ऑफ़लाइन तैयार ✓" else "मॉडल लोड नहीं हुआ: ${app.llm.lastError ?: ""}"
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { com.maira.assistant.brain.MairaBrainLoader.get(applicationContext) }
+            refreshStatus()
         }
     }
 
     private fun refreshStatus() {
         tvStatus.text = when {
-            Prefs.downloadId(this) >= 0 -> "मॉडल डाउनलोड हो रहा है… (सेटअप देखें)"
-            Prefs.modelPath(this) == null -> "AI मॉडल नहीं है — ⚙ सेटअप में डाउनलोड करें (फ़ोन कमांड चलेंगी)"
-            app.llm.isLoaded -> "ऑफ़लाइन तैयार ✓"
-            app.llm.loading -> "AI दिमाग लोड हो रहा है…"
+            !Prefs.brainEnabled(this) -> "तैयार (सिर्फ़ नियम वाली कमांड — मायरा ब्रेन बंद है)"
+            com.maira.assistant.brain.MairaBrainLoader.isLoaded() -> "🧠 मायरा ब्रेन तैयार ✓ (ऑफ़लाइन)"
             else -> "तैयार"
         }
     }

@@ -45,7 +45,7 @@ class PhoneActions(private val ctx: Context) {
      * Starts activities through the accessibility service when it is running: Android blocks activity starts from
      * a background service ("Hey Maira"), but apps with a bound AccessibilityService are exempt.
      */
-    private fun start(i: Intent): Boolean = try {
+    fun start(i: Intent): Boolean = try {
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         (MairaAccessibilityService.instance ?: ctx).startActivity(i); true
     } catch (e: ActivityNotFoundException) { false } catch (e: SecurityException) { false } catch (e: Exception) { false }
@@ -379,5 +379,5 @@ class PhoneActions(private val ctx: Context) {
     }
 
     fun help(): String =
-        "मैं ऐप खोल सकती हूँ, स्क्रीन और नोटिफिकेशन पढ़कर सुना सकती हूँ, स्क्रीन का सार बता सकती हूँ, ‘स्क्रीन बोलो मोड’ में हर नई स्क्रीन अपने आप बोल सकती हूँ, कॉल और मैसेज कर सकती हूँ, टॉर्च, आवाज़, अलार्म, टाइमर, वाई-फ़ाई, बैटरी, समय, फोटो, गाना, होम, बैक, स्क्रीनशॉट और लॉक संभाल सकती हूँ। और कोई भी सवाल पूछिए, मैं हिंदी में जवाब दूँगी।"
+        "मैं ऐप खोल और हटा सकती हूँ, स्क्रीन, नोटिफिकेशन और मैसेज पढ़कर सुना सकती हूँ, ‘स्क्रीन बोलो मोड’ में हर नई स्क्रीन अपने आप बोल सकती हूँ, कॉल, वीडियो कॉल और SMS या व्हाट्सएप मैसेज कर सकती हूँ, मिस्ड कॉल बता सकती हूँ, अलार्म, टाइमर, रिमाइंडर और नोट लगा सकती हूँ, टॉर्च, आवाज़, ब्राइटनेस, साइलेंट, डू नॉट डिस्टर्ब, वाई-फ़ाई और दूसरी सेटिंग संभाल सकती हूँ, रास्ता दिखा सकती हूँ, गाना चला सकती हूँ, हिसाब लगा सकती हूँ, और बैटरी, समय, तारीख बता सकती हूँ। मैं अपने दिमाग से चलती हूँ और रोज़ सीख रही हूँ।"
 }

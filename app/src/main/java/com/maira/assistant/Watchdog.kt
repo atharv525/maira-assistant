@@ -49,7 +49,6 @@ class WatchdogWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, param
     override fun doWork(): Result {
         val c = applicationContext
         try { Watchdog.ensureWake(c) } catch (_: Exception) {}
-        try { ModelManager.ensureAuto(c) } catch (_: Exception) {}
         try { Updater.checkBlocking(c) } catch (_: Exception) {}
         return Result.success()
     }

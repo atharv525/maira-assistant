@@ -134,17 +134,7 @@ class AutomationTest {
         assertNull(SetupGuide.hint("nope", bat))
     }
 
-    // ---------------- Model pick + update parsing
-    @Test fun modelPickByRam() {
-        assertEquals(ModelManager.SMALL, ModelManager.pickDefault(3_800_000_000L))
-        assertEquals(ModelManager.SMALL, ModelManager.pickDefault(4_900_000_000L))
-        assertEquals(ModelManager.BIG, ModelManager.pickDefault(5_700_000_000L))
-        assertEquals(ModelManager.BIG, ModelManager.pickDefault(7_600_000_000L))
-        assertEquals(ModelManager.BIG, ModelManager.pickDefault(0L))   // unknown → default big
-        assertEquals(60_000L, ModelManager.retryDelayMs(0))
-        assertEquals(60 * 60_000L, ModelManager.retryDelayMs(10))
-    }
-
+    // ---------------- update parsing
     @Test fun releaseParsing() {
         val json = """{"tag_name":"latest","name":"Maira v1.2 (build 57)","body":"Auto build\nversionCode=157\nversionName=1.2",
             "assets":[{"name":"version.txt","browser_download_url":"https://x/version.txt"},{"name":"Maira.apk","browser_download_url":"https://x/Maira.apk"}]}"""
